@@ -9,6 +9,7 @@ from steuer_rag.sources.base import BaseScraper
 from steuer_rag.sources.bundesfinanzministerium import BMFScraper
 from steuer_rag.sources.bzst import BZStScraper
 from steuer_rag.sources.elster import ElsterScraper
+from steuer_rag.sources.gesetze import GesetzeImInternetScraper
 
 SourceFactory = Callable[[], BaseScraper]
 
@@ -16,6 +17,7 @@ REGISTRY: dict[SourceName, SourceFactory] = {
     SourceName.BMF: BMFScraper,
     SourceName.ELSTER: ElsterScraper,
     SourceName.BZST: BZStScraper,
+    SourceName.GESETZE: GesetzeImInternetScraper,
 }
 
 
