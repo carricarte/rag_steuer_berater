@@ -32,9 +32,20 @@ class BMFScraper(BaseScraper):
         "/Web/EN/Issues/Taxation/taxation.html",
     )
 
-    # HTML scope: only tax-related topic + content paths in DE or EN.
+    # HTML scope: individual-taxpayer tax content only. Negative lookahead excludes:
+    # - VAT / corporate / trade tax (Umsatzsteuer, Gewerbesteuer, Koerperschaft)
+    # - fiscal statistics (Steuerschaetzung, Steuereinnahmen, Umrechnungskurse)
+    # - non-content pages (Pressemitteilungen, Bilderstrecken, Bilder/, Video-Textfassungen,
+    #   Glossareintraege, Standardartikel/Meta)
+    # - business-only guidance (AfA-Tabelle, Betriebspruefung)
+    # - pagination (VollstaendigeListe)
     allow_pattern = re.compile(
-        r"bundesfinanzministerium\.de/(Content|Web)/(DE|EN)/.*"
+        r"bundesfinanzministerium\.de/(Content|Web)/(DE|EN)/"
+        r"(?!.*(Umsatzsteuer|Gewerbesteuer|Koerperschaft|Betriebspruefung|AfA-Tabelle|"
+        r"Steuerschaetzung|Steuereinnahmen|Pressemitteilung|Bilderstrecken|"
+        r"Bilder/|Video-Textfassung|Glossareintraeg|Standardartikel/Meta|"
+        r"VollstaendigeListe|Umrechnungskurse))"
+        r".*"
         r"(Steuer|Einkommen|Lohn|Abgabe|Tax|Income|Wage|Levy|Erklaerung|Declaration|FAQ)",
         re.I,
     )

@@ -1,9 +1,9 @@
 """Scraper for gesetze-im-internet.de — official BMJV publication of German federal statutes.
 
 Indexes the three tax-relevant laws:
-  - EStG (Einkommensteuergesetz)     — /estg/
-  - AO  (Abgabenordnung)             — /ao_1977/
-  - EStDV (EStG-Durchführungsverordnung) — /estdv/
+  - EStG  (Einkommensteuergesetz)              — /estg/
+  - AO    (Abgabenordnung)                     — /ao_1977/
+  - EStDV (EStG-Durchführungsverordnung)       — /estdv_1955/
 
 Each law's TOC page (depth 0) links to individual section pages (depth 1), so max_depth=1 is
 sufficient. Thin-page threshold is lowered to 200 chars — short legal provisions are still
@@ -23,17 +23,18 @@ class GesetzeImInternetScraper(BaseScraper):
     base_url = "https://www.gesetze-im-internet.de"
 
     # Verified 2026-05-14. Each TOC page links to all section pages for that law.
+    # Note: EStDV is published under /estdv_1955/, not /estdv/.
     seed_paths = (
         "/estg/",
         "/ao_1977/",
-        "/estdv/",
+        "/estdv_1955/",
     )
 
     # HTML scope: section pages directly under each law directory only.
     # Matches /estg/__1.html, /estg/anlage_xyz.html, /ao_1977/__1.html, etc.
     # The trailing `(/[^/]*)?$` prevents descending into subdirectories.
     allow_pattern = re.compile(
-        r"gesetze-im-internet\.de/(estg|ao_1977|estdv)(/[^/]*)?$",
+        r"gesetze-im-internet\.de/(estg|ao_1977|estdv_1955)(/[^/]*)?$",
         re.I,
     )
 
@@ -41,10 +42,10 @@ class GesetzeImInternetScraper(BaseScraper):
     # These supplement the HTML sections for content that PDF extraction captures better
     # (e.g. tables in EStDV annexes).
     pdf_allow_pattern = re.compile(
-        r"gesetze-im-internet\.de/(estg|ao_1977|estdv)/\w+\.pdf",
+        r"gesetze-im-internet\.de/(estg|ao_1977|estdv_1955)/\w+\.pdf",
         re.I,
     )
 
-    max_pages = 700  # EStG ~107 + AO ~414 + EStDV ~80 sections, plus 3 PDFs
+    max_pages = 1000  # EStG ~107 + AO ~414 + EStDV ~84 sections + TOC pages + PDFs
     max_depth = 1
     thin_html_chars = 200  # short provisions (e.g. § 2 AO, one sentence) are still valuable
