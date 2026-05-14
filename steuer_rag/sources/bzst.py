@@ -52,11 +52,13 @@ class BZStScraper(BaseScraper):
         re.I,
     )
 
-    # PDF scope: forms / FAQ bundles / infoblätter for private individuals. Scope to
-    # the Privatpersonen + Service + Home paths so we don't pull every PDF on the host.
+    # PDF scope: forms / FAQ bundles / infoblätter for private individuals.
+    # Explicitly excluded from SharedDocs: Versicherung_Feuerschutz (fire-protection insurance
+    # tax — corporate/insurer topic), EOP_BOP (portal registration for businesses), and IBAN
+    # (bank-side IBAN notification templates — not taxpayer guidance).
     pdf_allow_pattern = re.compile(
-        r"bzst\.de/(SharedDocs/Downloads|DE/Privatpersonen|EN/PrivateIndividuals|"
-        r"(DE|EN)/(Service|Home))/.*\.pdf",
+        r"bzst\.de/SharedDocs/Downloads/DE/(?!(Versicherung|EOP_BOP|IBAN/)).*\.pdf"
+        r"|bzst\.de/(DE/Privatpersonen|EN/PrivateIndividuals)/.*\.pdf",
         re.I,
     )
 

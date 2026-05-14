@@ -39,12 +39,14 @@ class BMFScraper(BaseScraper):
         re.I,
     )
 
-    # PDF scope: BMF-Schreiben (binding administrative guidance), publication brochures
-    # (Broschueren_Bestellservice / Press_Room/Publications), and FAQ download bundles.
-    # Everything else (press releases, image stories, raw forms) is intentionally excluded.
+    # PDF scope: BMF-Schreiben (binding administrative guidance), Broschueren, FAQ bundles,
+    # and the EN Press_Room/Publications brochures. `Standardartikel` is intentionally excluded —
+    # it covers the monthly Steuereinnahmen and Steuerschätzung fiscal-statistics PDFs which
+    # are irrelevant to individual tax filing.
     pdf_allow_pattern = re.compile(
-        r"bundesfinanzministerium\.de/Content/(DE|EN)/.*"
-        r"(BMF_Schreiben|Broschueren|Brochures|Publications|FAQ|Standardartikel).*\.pdf",
+        r"bundesfinanzministerium\.de/Content/(DE|EN)/Downloads/.*"
+        r"(BMF_Schreiben|Broschueren|FAQ).*\.pdf"
+        r"|bundesfinanzministerium\.de/Content/(DE|EN)/Standardartikel/Press_Room/Publications/.*\.pdf",
         re.I,
     )
 
