@@ -14,6 +14,10 @@ data/cache/
 *.sqlite3
 *.db
 
+# Local-only eval/comparison artefacts — not part of the public repo
+data/*.md
+scripts/compare_rag.py
+
 # Env / secrets — committing real values here is forbidden. Only .env.example is tracked.
 .env
 .env.*
