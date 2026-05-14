@@ -95,6 +95,7 @@ def chunks_for_document(
                 source=doc.source,
                 url=doc.url,
                 doc_title=doc.doc_title,
+                doc_type=doc.doc_type,
                 section=doc.section,
                 language=doc.language,
                 content=p.content,

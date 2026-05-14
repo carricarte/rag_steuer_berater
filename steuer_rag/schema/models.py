@@ -25,12 +25,14 @@ class SourceName(str, Enum):
     BMF = "bundesfinanzministerium"
     ELSTER = "elster"
     BZST = "bzst"
+    GESETZE = "gesetze"
 
 
 SOURCE_BASE_URLS: dict[SourceName, str] = {
     SourceName.BMF: "https://www.bundesfinanzministerium.de",
     SourceName.ELSTER: "https://www.elster.de",
     SourceName.BZST: "https://www.bzst.de",
+    SourceName.GESETZE: "https://www.gesetze-im-internet.de",
 }
 
 
@@ -140,6 +142,7 @@ class DocumentChunk(BaseModel):
     source: SourceName
     url: HttpUrl
     doc_title: str
+    doc_type: Literal["html", "pdf", "form"] = "html"
     section: str | None = None
     language: Language
     content: str
@@ -160,6 +163,7 @@ class DocumentChunk(BaseModel):
             "source": self.source.value,
             "url": str(self.url),
             "doc_title": self.doc_title,
+            "doc_type": self.doc_type,
             "section": self.section or "",
             "language": self.language.value,
             "chunk_index": self.chunk_index,
