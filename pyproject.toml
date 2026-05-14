@@ -1,0 +1,82 @@
+[project]
+name = "steuer-rag"
+version = "0.1.0"
+description = "Bilingual (DE/EN) RAG system for the German Steuererklärung — scrapes BMF, Elster, BZSt official sources."
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+authors = [{ name = "Steuer-RAG Team" }]
+license = { text = "MIT" }
+
+dependencies = [
+    # LangChain stack
+    "langchain>=0.3.7",
+    "langchain-core>=0.3.15",
+    "langchain-community>=0.3.5",
+    "langchain-chroma>=0.1.4",
+    "langchain-huggingface>=0.1.2",
+    "langchain-anthropic>=0.3.0",
+    "langchain-openai>=0.2.5",
+    "langchain-text-splitters>=0.3.2",
+    # Vector store
+    "chromadb>=0.5.18",
+    # Models
+    # On Intel macOS torch is pinned to 2.2.x (last wheel); cap transformers/ST to versions
+    # that still support it. Linux/ARM-Mac users can bump these.
+    "sentence-transformers>=3.0.0,<4.0.0",
+    "transformers>=4.40.0,<5.0.0",
+    "torch>=2.2.0,<2.6.0",
+    "numpy<2.0",
+    "FlagEmbedding>=1.2.0,<1.4.0",
+    # Sparse retrieval
+    "rank-bm25>=0.2.2",
+    # Scraping
+    "httpx>=0.27.2",
+    "beautifulsoup4>=4.12.3",
+    "lxml>=5.3.0",
+    "pypdf>=5.1.0",
+    "pdfplumber>=0.11.4",
+    "trafilatura>=1.12.2",
+    "urllib3>=2.2.3",
+    # Lang detection
+    "langdetect>=1.0.9",
+    "fasttext-langdetect>=1.0.5",
+    # Pydantic
+    "pydantic>=2.9.2",
+    "pydantic-settings>=2.6.1",
+    # CLI / API
+    "typer>=0.15.1",
+    "rich>=13.9.4",
+    "fastapi>=0.115.5",
+    "uvicorn[standard]>=0.32.0",
+    # Utils
+    "tenacity>=9.0.0",
+    "python-dotenv>=1.0.1",
+    "tomli>=2.0.2",
+    "tqdm>=4.67.0",
+    "structlog>=24.4.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.3",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.7.4",
+    "mypy>=1.13.0",
+]
+
+[project.scripts]
+steuer-rag = "steuer_rag.cli.main:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["steuer_rag"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
