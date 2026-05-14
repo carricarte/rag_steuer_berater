@@ -22,7 +22,7 @@ class Language(str, Enum):
 
 
 class SourceName(str, Enum):
-    BMF = "bundesfinanzministerium"
+    BMF = "bmf"
     ELSTER = "elster"
     BZST = "bzst"
     GESETZE = "gesetze"

@@ -50,7 +50,7 @@ def _main(verbose: bool = typer.Option(False, "--verbose", "-v")) -> None:
 def ingest(
     source: str = typer.Argument(
         "all",
-        help="Source name or 'all'. Options: bundesfinanzministerium | elster | bzst | all",
+        help="Source name or 'all'. Options: bmf | elster | bzst | gesetze | all",
     ),
     limit: int | None = typer.Option(None, "--limit", help="Max documents to fetch per source."),
 ) -> None:
