@@ -8,7 +8,8 @@ import io
 import logging
 import re
 import urllib.robotparser
-from abc import ABC, abstractmethod
+from abc import ABC
+from collections import deque
 from collections.abc import AsyncIterator, Iterable
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
@@ -167,10 +168,20 @@ class BaseScraper(ABC):
     base_url: str
     # paths under base_url that are explicitly in-scope for Steuererklärung content
     seed_paths: tuple[str, ...] = ()
-    # regex of URLs to keep when crawling links
+    # regex of HTML URLs we recurse into (PDFs are followed regardless — they are
+    # terminal and always valuable when reachable from in-scope content).
     allow_pattern: re.Pattern[str] | None = None
+    # Optional regex narrowing which PDFs are accepted. Defaults to "any .pdf on the
+    # same host". Override in subclasses to scope tightly (e.g., only BMF_Schreiben).
+    pdf_allow_pattern: re.Pattern[str] | None = None
     # max pages to retrieve in one ingest run (safety guardrail)
-    max_pages: int = 200
+    max_pages: int = 400
+    # how many hops from a seed we recurse for HTML pages. 0 = seeds only, 1 = old
+    # behaviour (seeds + their links), 2 = seeds + links + links-of-links.
+    max_depth: int = 2
+    # HTML pages whose extracted text is below this are treated as navigation hubs —
+    # their links are still harvested but they are NOT yielded for indexing.
+    thin_html_chars: int = 600
 
     def __init__(self, client: httpx.AsyncClient | None = None) -> None:
         self.settings = get_settings()
@@ -229,34 +240,109 @@ class BaseScraper(ABC):
 
     # ----- link extraction -----
 
-    def discover_links(self, html: str, base: str) -> Iterable[str]:
+    def _iter_all_links(self, html: str, base: str) -> Iterable[str]:
+        """All same-host, dereferenced links from `html`, before scope filtering."""
         soup = BeautifulSoup(html, "lxml")
         # Respect <base href> — BMF, BZSt et al. set it to the site root, which means
         # relative hrefs like "Web/DE/..." resolve to "https://host/Web/DE/...", not to
         # "<page_dir>/Web/DE/...". Falling back to the request URL breaks those sites.
         base_tag = soup.find("base", href=True)
         link_base = base_tag["href"] if base_tag else base
-        link_base = urljoin(base, link_base)  # ensure absolute
+        link_base = urljoin(base, link_base)
 
         for a in soup.find_all("a", href=True):
             href = a["href"].strip()
             if not href or href.startswith(("mailto:", "javascript:", "#")):
                 continue
-            full = urljoin(link_base, href)
-            full = full.split("#")[0]
+            full = urljoin(link_base, href).split("#")[0]
             if not full.startswith(self.base_url):
+                continue
+            yield full
+
+    def _is_pdf_url(self, url: str) -> bool:
+        return ".pdf" in urlparse(url).path.lower()
+
+    def discover_links(self, html: str, base: str) -> Iterable[str]:
+        """In-scope HTML pages only (post-`allow_pattern` filtering)."""
+        for full in self._iter_all_links(html, base):
+            if self._is_pdf_url(full):
                 continue
             if self.allow_pattern and not self.allow_pattern.search(full):
                 continue
             yield full
 
+    def discover_pdf_links(self, html: str, base: str) -> Iterable[str]:
+        """All PDF URLs on the page. Optional pattern can scope which PDFs we accept."""
+        for full in self._iter_all_links(html, base):
+            if not self._is_pdf_url(full):
+                continue
+            if self.pdf_allow_pattern and not self.pdf_allow_pattern.search(full):
+                continue
+            yield full
+
     # ----- entry point -----
 
-    @abstractmethod
     async def crawl(self) -> AsyncIterator[DocumentCore]:
-        """Yield `DocumentCore` records. Must be implemented per-source."""
-        if False:  # pragma: no cover  — make it an async generator
-            yield  # type: ignore[unreachable]
+        """Default crawler: depth-limited BFS from `seed_paths`.
+
+        Rules:
+        - Seeds are always processed at depth 0.
+        - For each HTML page we fetch, we extract two link sets:
+            * HTML pages matching `allow_pattern` → enqueued at depth+1 (capped by `max_depth`)
+            * PDF URLs matching `pdf_allow_pattern` → enqueued unconditionally, since PDFs
+              are terminal and the highest-signal content on these portals.
+        - Thin HTML pages (text < `thin_html_chars`) are treated as navigation hubs:
+          we recurse into their links but don't yield them as documents.
+        - `max_pages` caps the total number of documents yielded as a safety net.
+        """
+        visited: set[str] = set()
+        queue: deque[tuple[str, int]] = deque()
+        for path in self.seed_paths:
+            queue.append((self.base_url + path, 0))
+
+        yielded = 0
+        while queue and yielded < self.max_pages:
+            url, depth = queue.popleft()
+            if url in visited:
+                continue
+            visited.add(url)
+
+            doc = await self.fetch_and_parse(url)
+
+            # Decide whether to yield this doc.
+            if doc is not None:
+                is_thin_html = doc.doc_type == "html" and len(doc.content) < self.thin_html_chars
+                if not is_thin_html:
+                    yield doc
+                    yielded += 1
+                else:
+                    log.info(
+                        "[crawl] thin nav page (%d chars), recursing only: %s",
+                        len(doc.content), url,
+                    )
+
+            # Recurse: only HTML responses have links to follow.
+            if depth >= self.max_depth:
+                continue
+            cache_path = self._cache_path(url)
+            if not cache_path.exists():
+                continue
+            try:
+                html = cache_path.read_bytes().decode("utf-8", errors="ignore")
+            except Exception:
+                continue
+            # Don't even try link extraction on PDF bytes.
+            if doc is not None and doc.doc_type == "pdf":
+                continue
+
+            # Enqueue PDFs FIRST (left-side, processed sooner) so we don't lose them to
+            # the max_pages cap when an HTML hub explodes the queue.
+            for pdf in self.discover_pdf_links(html, base=url):
+                if pdf not in visited:
+                    queue.appendleft((pdf, depth + 1))
+            for link in self.discover_links(html, base=url):
+                if link not in visited:
+                    queue.append((link, depth + 1))
 
     # ----- helpers concrete subclasses use -----
 
