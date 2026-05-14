@@ -1,0 +1,37 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Data
+data/raw/
+data/chroma/
+data/lance/
+data/cache/
+*.sqlite3
+*.db
+
+# Env / secrets — committing real values here is forbidden. Only .env.example is tracked.
+.env
+.env.*
+!.env.example
+secrets.toml
+*.secret
+*.secrets.*
+.secrets/
+credentials.json
+service-account*.json
+*.pem
+*.key
+
+# IDE
+.idea/
+.vscode/
+
+# Build
+dist/
+build/
+*.egg-info/
