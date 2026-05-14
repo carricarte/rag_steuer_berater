@@ -2,9 +2,10 @@
 
 > **Purpose:** Help users in Germany answer questions about their *Steuererklärung*
 > (income tax return) using only official primary sources:
-> [`bundesfinanzministerium.de`](https://www.bundesfinanzministerium.de),
-> [`elster.de`](https://www.elster.de), and
-> [`bzst.de`](https://www.bzst.de).
+> [`bundesfinanzministerium.de`](https://www.bundesfinanzministerium.de) (BMF),
+> [`elster.de`](https://www.elster.de),
+> [`bzst.de`](https://www.bzst.de), and
+> [`gesetze-im-internet.de`](https://www.gesetze-im-internet.de) (EStG · AO · EStDV).
 > **Stack:** Python ≥ 3.11 · LangChain · Chroma (vector) · BGE-M3 (multilingual embeddings) ·
 > BGE-reranker-v2-m3 (cross-encoder) · Anthropic Claude or OpenAI (generation).
 
@@ -38,42 +39,40 @@ tax return. It targets two audiences:
 In both cases the same underlying corpus is queried; language selection drives prompt
 rendering and a soft preference in retrieval ordering.
 
-Five logical lanes (same structure as the reference design):
-
 ```
-┌────────────────────────────┐
-│  Scrapers (BMF, Elster,    │── DocumentCore rows
-│  BZSt) + PDF parser        │
-└────────────────────────────┘
+┌────────────────────────────────────┐
+│  Scrapers (BMF, Elster, BZSt,      │── DocumentCore rows
+│  Gesetze) + PDF parser             │
+└────────────────────────────────────┘
               │
               ▼
-┌────────────────────────────┐
-│  Chunker (deterministic,   │── DocumentChunk rows
-│  char-based, v1)           │
-└────────────────────────────┘
+┌────────────────────────────────────┐
+│  Chunker (deterministic,           │── DocumentChunk rows
+│  char-based, v1)                   │
+└────────────────────────────────────┘
               │
               ▼
-┌────────────────────────────┐
-│  BGE-M3 embedder           │── 1024-d vectors
-└────────────────────────────┘
+┌────────────────────────────────────┐
+│  BGE-M3 embedder                   │── 1024-d vectors
+└────────────────────────────────────┘
               │
               ▼
-┌────────────────────────────┐
-│  Chroma (vector + BM25     │── persistent kb
-│  built in-process)         │
-└────────────────────────────┘
+┌────────────────────────────────────┐
+│  Chroma (vector + BM25             │── persistent kb
+│  built in-process)                 │
+└────────────────────────────────────┘
               │
               ▼
-┌────────────────────────────┐
-│  Hybrid retriever + BGE    │── top-k passages
-│  cross-encoder reranker    │
-└────────────────────────────┘
+┌────────────────────────────────────┐
+│  Hybrid retriever + BGE            │── top-k passages
+│  cross-encoder reranker            │
+└────────────────────────────────────┘
               │
               ▼
-┌────────────────────────────┐
-│  LCEL RAG chain            │── cited answer (DE or EN)
-│  (Anthropic / OpenAI)      │
-└────────────────────────────┘
+┌────────────────────────────────────┐
+│  LCEL RAG chain                    │── cited answer (DE or EN)
+│  (Anthropic / OpenAI)              │
+└────────────────────────────────────┘
 ```
 
 The pipeline is **deterministic by design**: content-addressable doc/chunk IDs, byte-stable chunk
@@ -87,15 +86,18 @@ offsets, pinned models, frozen `chunk_strategy_version = "v1"`.
 
 ```
 External Sources
-  ├── bundesfinanzministerium.de (HTML + PDF, DE + EN mirror)
-  ├── elster.de                  (HTML, DE)
-  └── bzst.de                    (HTML + PDF, DE + EN mirror)
+  ├── bundesfinanzministerium.de  (BMF-Schreiben, brochures, FAQ — DE + EN)
+  ├── elster.de                   (public help / FAQ / forms listing — DE)
+  ├── bzst.de                     (IdNr, ELStAM, Altersvorsorge, Kapitalerträge — DE + EN)
+  └── gesetze-im-internet.de      (EStG, AO, EStDV — DE)
          │
          ▼
 Async scrapers (steuer_rag/sources/*)
   · respect robots.txt
   · polite delay + bounded concurrency
   · on-disk byte cache (./data/raw/<source>/<sha>.bin)
+  · depth-N BFS with thin-page filtering (< thin_html_chars → recurse only)
+  · separate PDF discovery pipeline (pdf_allow_pattern per source)
          │
          ▼
 schema/models.DocumentCore.build()
@@ -111,7 +113,8 @@ pipeline/embed.get_embeddings()   →  BAAI/bge-m3 (1024-d, multilingual)
          │
          ▼
 pipeline/index.VectorIndex (Chroma persistent at ./data/chroma)
-  · upsert by chunk_id  · metadata: source, language, url, title, offsets
+  · upsert by chunk_id  · metadata: source, doc_type, language, url, title, offsets
+  · batched writes (4 000/batch) to stay under Chroma's hard cap
          │
          ▼
 retrieval/search.HybridRetriever
@@ -134,22 +137,26 @@ Every source extends `BaseScraper` (`sources/base.py`) which provides:
 |--------|------------------|
 | Politeness | `User-Agent` header from `STEUER_RAG_USER_AGENT`; `STEUER_RAG_REQUEST_DELAY_MS` between requests; `STEUER_RAG_MAX_CONCURRENCY` cap |
 | robots.txt | `urllib.robotparser` — disallowed URLs are skipped with a log line |
-| Retry | `tenacity` exponential backoff (3 attempts) on `TransportError` / `HTTPStatusError` / `ReadTimeout` |
+| Retry | `tenacity` exponential backoff (3 attempts) on `TransportError` / 5xx / 429; 4xx errors are not retried |
 | Caching | First fetch saves raw bytes to `./data/raw/<source>/<sha>.bin`; re-runs read from cache |
 | HTML cleanup | `trafilatura` first (boilerplate-aware), `BeautifulSoup` fallback |
-| PDF parsing | `pdfplumber` first, `pypdf` fallback |
-| Discovery | Seed pages → in-scope link extraction filtered by `allow_pattern` regex, breadth-first |
-| Caps | `max_pages` per source (default 200–250) — safety guard against runaway crawls |
+| PDF parsing | `pdfplumber` first (with `/Title` metadata extraction), `pypdf` fallback |
+| Discovery | BFS from seed pages; HTML links filtered by `allow_pattern`; PDFs by `pdf_allow_pattern` |
+| Depth | `max_depth` controls hops from seeds; thin nav pages (< `thin_html_chars`) are recursed but not indexed |
+| Caps | `max_pages` per source — safety guard against runaway crawls |
 
 Concrete scrapers:
 
-- `BMFScraper` — seeds `Themen/Steuern/Einkommensteuer` + English mirror `/Web/EN/...`
-- `ElsterScraper` — public help / FAQ / `infoseite` paths (most ELSTER content is auth-walled)
-- `BZStScraper` — `Privatpersonen` + EN mirror
+| File | Source | Scope |
+|------|--------|-------|
+| `sources/bmf.py` | `bundesfinanzministerium` | BMF-Schreiben, brochures, FAQ — individual income tax only; excludes VAT, corporate, fiscal-stats |
+| `sources/elster.py` | `elster` | Public help, FAQ, forms listing (most ELSTER is auth-walled) |
+| `sources/bzst.py` | `bzst` | Privatpersonen + EN mirror; excludes fire-protection insurance, bank-side templates |
+| `sources/gesetze.py` | `gesetze` | EStG + AO + EStDV section pages from gesetze-im-internet.de |
 
 ### 2.3 Lane 2 — Chunking (`steuer_rag/schema/chunking.py`)
 
-Same approach as the reference design — **character-based, deterministic, model-agnostic**:
+**Character-based, deterministic, model-agnostic:**
 
 ```python
 chunk_text(
@@ -169,12 +176,9 @@ chunk_text(
 ### 2.4 Lane 3 — Embedding (`steuer_rag/pipeline/embed.py`)
 
 - **Model:** `BAAI/bge-m3` (default; override via `STEUER_RAG_EMBED_MODEL`).
-- **Why this model?** Multilingual (DE + EN + ~100 langs), 1024-d, dense+sparse+ColBERT,
-  Apache-2.0 license — important because we redistribute the embedded index.
+- **Why this model?** Multilingual (DE + EN + ~100 langs), 1024-d, Apache-2.0 license.
 - **Provider:** `sentence-transformers` via `langchain_huggingface.HuggingFaceEmbeddings`.
 - **Device:** `STEUER_RAG_EMBED_DEVICE` (cpu / cuda / mps), auto-batched at 32.
-- **Lockstep guarantee:** the same `get_embeddings()` singleton encodes corpus **and** queries —
-  same model, same normalization, same dim space.
 
 ### 2.5 Lane 4 — Vector Store (`steuer_rag/pipeline/index.py`)
 
@@ -185,6 +189,7 @@ chunk_text(
 | Collection | `steuer_chunks` |
 | Distance | cosine (`hnsw:space=cosine`) |
 | Upsert | by `chunk_id` (re-running ingest is idempotent) |
+| Write batch | 4 000 chunks/call (Chroma hard cap is ~5 461) |
 | Metadata | flat scalars only — Chroma rejects nested types |
 
 ### 2.6 Lane 5 — Retrieval (`steuer_rag/retrieval/search.py`)
@@ -198,18 +203,14 @@ chunk_text(
 
 Common features:
 
-- `source_filter` (`bundesfinanzministerium` | `elster` | `bzst`) — applied to Chroma metadata
-  and to BM25 post-filter.
-- `language_preference` — soft preference (preferred-language docs sort first; we don't hard-drop
-  the other language, so the user still gets results when their language is sparse).
-- Auto-detect: when `language` is `None`, we infer from the query.
+- `source_filter` (`bundesfinanzministerium` | `elster` | `bzst` | `gesetze`) — applied to Chroma metadata and BM25 post-filter.
+- `language_preference` — soft preference (preferred-language docs sort first; the other language is never hard-dropped).
+- Auto-detect: when `language` is `None`, inferred from the query.
 
 ### 2.7 Lane 6 — Generation (`steuer_rag/generation/`)
 
 - **LCEL chain** — composes with LangChain callbacks, streaming, tracing.
-- **Bilingual prompts** (`prompts.py`) — system + user templates for DE and EN with the same
-  structural rules: cite by `[n]`, refuse to invent, surface "context not sufficient" answers
-  rather than hallucinate, end with a `Sources:` / `Quellen:` block.
+- **Bilingual prompts** (`prompts.py`) — system + user templates for DE and EN: cite by `[n]`, refuse to invent, surface "context not sufficient" rather than hallucinate, end with a `Sources:` / `Quellen:` block.
 - **LLM provider** — Anthropic Claude (default) or OpenAI, switched by env.
 
 The chain returns a `RAGAnswer` dataclass:
@@ -243,7 +244,8 @@ data/
 | `chunk_id` | str | primary key (sha prefix) |
 | `doc_id` | str | join back to source doc |
 | `document_key` | str | URL (stable cross-version key) |
-| `source` | str | `bundesfinanzministerium` \| `elster` \| `bzst` |
+| `source` | str | `bundesfinanzministerium` \| `elster` \| `bzst` \| `gesetze` |
+| `doc_type` | str | `html` \| `pdf` |
 | `url` | str | citation |
 | `doc_title` | str | display |
 | `section` | str | optional sub-section |
@@ -255,13 +257,21 @@ data/
 | *(content)* | text | embedded + BM25 input |
 | *(vector)* | 1024-d float[] | dense search |
 
-### 3.3 Re-runs / refresh
+### 3.3 Approximate corpus size (full ingest)
 
-- **Idempotent**: re-running `steuer-rag ingest <source>` writes the same chunk IDs → Chroma
-  upserts in place. Safe to run on a schedule.
+| Source | Docs | Chunks | Content |
+|--------|------|--------|---------|
+| BMF | ~500 | ~17 000 | BMF-Schreiben (Einkommensteuer, Lohnsteuer, Kapitalertragsteuer), brochures, FAQ |
+| Elster | ~112 | ~260 | Public help pages, forms listing |
+| BZSt | ~65 | ~440 | IdNr, ELStAM, Altersvorsorge, Kapitalerträge, Kirchensteuer |
+| Gesetze | ~700 | ~6 000 | EStG + AO section pages (EStDV in progress) |
+| **Total** | **~1 380** | **~24 000** | |
+
+### 3.4 Re-runs / refresh
+
+- **Idempotent**: re-running `steuer-rag ingest <source>` writes the same chunk IDs → Chroma upserts in place. Safe to run on a schedule.
 - **Hard reset**: delete `./data/chroma/` and `./data/raw/`, then re-ingest.
-- **Model upgrade** (different embed model): delete `./data/chroma/` (vector dim/space is not
-  portable across models), then re-ingest.
+- **Model upgrade** (different embed model): delete `./data/chroma/` (vector dim/space is not portable across models), then re-ingest.
 
 ---
 
@@ -271,10 +281,13 @@ data/
 |------|-------|----------|-----------|------------|
 | Embedding | `BAAI/bge-m3` | HF / sentence-transformers | `STEUER_RAG_EMBED_MODEL` | 1024-d, local |
 | Reranker | `BAAI/bge-reranker-v2-m3` | HF / sentence-transformers `CrossEncoder` | `STEUER_RAG_RERANK_MODEL` | top-50 → top-k |
-| LLM (default) | `claude-opus-4-7` | Anthropic | `STEUER_RAG_LLM_MODEL` | API |
+| LLM (default) | `claude-sonnet-4-6` | Anthropic | `STEUER_RAG_LLM_MODEL` | API |
 | LLM (alt) | `gpt-4o-mini` etc. | OpenAI | `STEUER_RAG_LLM_PROVIDER=openai` + `STEUER_RAG_LLM_MODEL` | API |
 
 All three OSS models are multilingual — DE and EN queries land in the same space.
+
+> **Intel Mac note:** Tested on Intel macOS. Pin `torch>=2.2,<2.6`, `transformers<5`,
+> `sentence-transformers<4`, `numpy<2` — wheels for newer versions don't exist for Intel.
 
 ---
 
@@ -293,13 +306,15 @@ Process environment > `.env` file (loaded by `pydantic-settings`) > built-in def
 
 ### 5.3 Optional tunables (with defaults)
 
-See `.env.example` — everything `STEUER_RAG_*` is optional and ships with sensible defaults
-(model names, chunk sizes, concurrency, etc.). The most useful ones in production:
+See `.env.example` — everything `STEUER_RAG_*` is optional and ships with sensible defaults.
 
-- `STEUER_RAG_EMBED_DEVICE=cuda` — GPU acceleration
-- `STEUER_RAG_REQUEST_DELAY_MS=400` — politeness; raise this if the source rate-limits
-- `STEUER_RAG_MAX_CONCURRENCY=4` — parallel requests per scraper
-- `STEUER_RAG_USER_AGENT` — **set this to a contactable email** before crawling
+| Var | Default | Notes |
+|-----|---------|-------|
+| `STEUER_RAG_EMBED_DEVICE` | `cpu` | Set `cuda` or `mps` for GPU |
+| `STEUER_RAG_REQUEST_DELAY_MS` | `300` | Raise to `1000` if getting rate-limited |
+| `STEUER_RAG_MAX_CONCURRENCY` | `5` | Parallel requests per scraper |
+| `STEUER_RAG_USER_AGENT` | generic | **Set to a contactable email** before crawling |
+| `STEUER_RAG_RERANK_ENABLED` | `true` | Disable for faster dev iteration |
 
 ---
 
@@ -336,7 +351,7 @@ See `.env.example` — everything `STEUER_RAG_*` is optional and ships with sens
 |---------|---------|------|
 | Anthropic API | Generation (default) | `ANTHROPIC_API_KEY` |
 | OpenAI API | Generation (alt) | `OPENAI_API_KEY` |
-| BMF, Elster, BZSt | Source content | none — public official portals |
+| BMF, Elster, BZSt, gesetze-im-internet.de | Source content | none — public portals |
 | Hugging Face Hub | First-time model download | none (anonymous) |
 
 ---
@@ -373,7 +388,7 @@ pip install -e ".[dev]"
 
 ```bash
 cp .env.example .env
-# Edit .env — at minimum set ANTHROPIC_API_KEY (or OPENAI_API_KEY) and your contact email
+# Edit .env — set ANTHROPIC_API_KEY (or OPENAI_API_KEY) and a contact email
 # in STEUER_RAG_USER_AGENT.
 ```
 
@@ -383,8 +398,12 @@ cp .env.example .env
 # safe smoke test — 5 pages per source
 steuer-rsb ingest all --limit 5
 
-# full ingest (takes 10–30 minutes depending on network + CPU)
+# full ingest (30–60 min depending on network + CPU; models download on first run)
 steuer-rsb ingest all
+
+# or ingest one source at a time
+steuer-rsb ingest bundesfinanzministerium
+steuer-rsb ingest gesetze
 ```
 
 The first run downloads:
@@ -392,7 +411,8 @@ The first run downloads:
 - BGE-M3 (~2.3 GB) into the HF cache
 - BGE-reranker-v2-m3 (~600 MB) into the HF cache
 
-Subsequent runs are local-only for the models.
+Subsequent runs are local-only for the models. Previously-fetched pages are served from
+`./data/raw/<source>/` — only new/changed URLs hit the network.
 
 ### 7.5 Verify retrieval
 
@@ -407,6 +427,7 @@ steuer-rsb ask "Wann muss ich die Steuererklärung abgeben?"
 steuer-rsb ask "How do I file an income tax return in Germany as an employee?"
 
 # Source filter
+steuer-rsb search "§ 33a EStG Unterhalt Ausland" --source gesetze --k 5
 steuer-rsb search "Lohnsteuer" --source bzst --k 5
 ```
 
@@ -445,11 +466,10 @@ If the last step returns a cited answer, the system is operational.
 Likely causes:
 
 1. Ingest hasn't run yet → `steuer-rag info` shows `indexed_chunks: 0`.
-2. The query is in a language under-represented in the corpus — pass `--lang de` (or `--lang en`)
+2. The query is in a language under-represented in the corpus — pass `--lang de` or `--lang en`
    to skip the auto-detect.
-3. The query mentions a specific paragraph (`§ 9 EStG`) that doesn't appear on any official portal
-   page in our scope. The system refuses to invent — this is by design. Point the user to the
-   `gesetze-im-internet.de` legal text.
+3. The query is about a very specific statutory provision — try `--source gesetze` to search
+   the EStG / AO law text directly.
 
 ### 8.2 Scraper getting blocked / rate-limited
 
@@ -482,14 +502,15 @@ The included tests cover chunking determinism, doc-ID stability, and language de
 
 ## 9. Appendix — Source Catalog
 
-| Source | Tags | Auth | Languages | Resources |
-|--------|------|------|-----------|-----------|
-| `bundesfinanzministerium` (BMF) | ministerial, policy, FAQ, PDFs | none | DE, EN | `Themen/Steuern/Einkommensteuer`, `Service/FAQ/Steuern`, `Web/EN/Issues/Taxation` |
-| `elster` | filing portal, help, FAQ | none (for public pages) | DE | `eportal/infoseite`, `eportal/hilfe`, `eportal/wo_finde_ich` |
-| `bzst` (Bundeszentralamt für Steuern) | tax authority, forms, FAQ, PDFs | none | DE, EN | `Privatpersonen`, `Service/FAQ`, `EN/PrivateIndividuals` |
+| Source ID | File | Tags | Languages | Scope |
+|-----------|------|------|-----------|-------|
+| `bundesfinanzministerium` | `sources/bmf.py` | BMF-Schreiben, brochures, FAQ | DE, EN | Einkommensteuer, Lohnsteuer, Kapitalertragsteuer, Erbschaft — individual filers only; excludes VAT, corporate, fiscal statistics |
+| `elster` | `sources/elster.py` | filing portal, help | DE | Public `eportal/infoseite`, `hilfe`, `formulare-leistungen` |
+| `bzst` | `sources/bzst.py` | tax authority, forms, PDF | DE, EN | `Privatpersonen` — IdNr, ELStAM, Altersvorsorge, Kapitalerträge, Kirchensteuer |
+| `gesetze` | `sources/gesetze.py` | law text | DE | EStG (§§ 1–139), AO (§§ 1–414), EStDV — section-level pages from gesetze-im-internet.de |
 
-All three feed the shared `steuer_chunks` collection, so a single retrieval call returns hits
-across every ingested source unless `--source` is set.
+All four sources feed the shared `steuer_chunks` Chroma collection, so a single retrieval call
+returns hits across every ingested source unless `--source` is set.
 
 ---
 

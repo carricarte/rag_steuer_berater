@@ -6,7 +6,7 @@ from collections.abc import Callable
 
 from steuer_rag.schema.models import SourceName
 from steuer_rag.sources.base import BaseScraper
-from steuer_rag.sources.bundesfinanzministerium import BMFScraper
+from steuer_rag.sources.bmf import BMFScraper
 from steuer_rag.sources.bzst import BZStScraper
 from steuer_rag.sources.elster import ElsterScraper
 from steuer_rag.sources.gesetze import GesetzeImInternetScraper
