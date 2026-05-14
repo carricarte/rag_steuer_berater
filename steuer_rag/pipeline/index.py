@@ -24,6 +24,10 @@ log = logging.getLogger(__name__)
 class VectorIndex:
     """Thin wrapper around a LangChain `VectorStore` with chunk-aware helpers."""
 
+    # Chroma rejects single `add` calls larger than ~5461 rows. Stay well under so the
+    # margin handles future Chroma cap changes and we get progress logs between batches.
+    _WRITE_BATCH_SIZE: int = 4000
+
     def __init__(self, store: VectorStore) -> None:
         self.store = store
 
@@ -37,9 +41,20 @@ class VectorIndex:
             ids.append(c.chunk_id)
         if not docs:
             return 0
-        # Chroma upserts on conflicting ids → re-running is idempotent.
-        self.store.add_documents(documents=docs, ids=ids)
-        return len(docs)
+        # Chroma upserts on conflicting ids → re-running is idempotent. We batch the
+        # write so we stay under Chroma's hard cap on `add_documents` size and so a
+        # partial failure on one batch doesn't lose the others.
+        written = 0
+        for i in range(0, len(docs), self._WRITE_BATCH_SIZE):
+            batch_docs = docs[i : i + self._WRITE_BATCH_SIZE]
+            batch_ids = ids[i : i + self._WRITE_BATCH_SIZE]
+            self.store.add_documents(documents=batch_docs, ids=batch_ids)
+            written += len(batch_docs)
+            log.info(
+                "[index] wrote batch %d–%d / %d",
+                i + 1, i + len(batch_docs), len(docs),
+            )
+        return written
 
     # ----- read path -----
 
