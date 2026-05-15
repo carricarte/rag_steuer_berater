@@ -87,11 +87,17 @@ class SearchResponse(BaseModel):
 @app.get("/health")
 def health() -> dict:
     s = get_settings()
+    api_key_set = bool(
+        s.anthropic_api_key if s.llm_provider == "anthropic" else s.openai_api_key
+    )
     return {
         "status": "ok",
         "indexed_chunks": get_index().count(),
         "embed_model": s.embed_model,
         "llm_provider": s.llm_provider,
+        "llm_model": s.llm_model,
+        "api_key_set": api_key_set,
+        "snapshot_dataset": s.snapshot_dataset,
     }
 
 
@@ -99,8 +105,9 @@ def health() -> dict:
 def ask(req: AskRequest) -> AskResponse:
     try:
         result = run_ask(req.question, k=req.k, source=req.source, language=req.language)
-    except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+    except Exception as e:
+        log.exception("ask failed")
+        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}") from e
     return AskResponse(
         question=result.question,
         answer=result.answer,

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from functools import lru_cache
 
 from langchain_core.language_models import BaseChatModel
 
@@ -12,7 +11,6 @@ from steuer_rag.config import get_settings
 log = logging.getLogger(__name__)
 
 
-@lru_cache(maxsize=1)
 def get_llm() -> BaseChatModel:
     s = get_settings()
     if s.llm_provider == "anthropic":
