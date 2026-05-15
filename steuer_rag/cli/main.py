@@ -79,6 +79,9 @@ def startup() -> None:
     log = logging.getLogger("steuer_rag.startup")
     s = get_settings()
 
+    # Issue 2: log resolved config so missing env vars are immediately visible
+    log.info("[startup] snapshot_dataset=%s hf_token_set=%s", s.snapshot_dataset, bool(s.hf_token))
+
     if s.snapshot_dataset:
         token = s.hf_token.get_secret_value() if s.hf_token else None
         log.info("[startup] checking for snapshot in %s", s.snapshot_dataset)
@@ -93,18 +96,27 @@ def startup() -> None:
         log.info("[startup] STEUER_RAG_SNAPSHOT_DATASET not set — running full ingest (~30-50 min)")
 
     results = ingest_all_sync()
+    total_chunks = 0
     for r in results:
         if "error" in r:
             log.error("[startup] ingest %s failed: %s", r["source"], r["error"])
         else:
             log.info("[startup] ingest %s done — %d docs, %d chunks", r["source"], r["docs"], r["chunks"])
+            total_chunks += r["chunks"]
 
     if s.snapshot_dataset and s.hf_token:
-        from steuer_rag.pipeline.snapshot import upload_snapshot
-
-        log.info("[startup] uploading snapshot to %s", s.snapshot_dataset)
-        upload_snapshot(s.chroma_dir, s.snapshot_dataset, token=s.hf_token.get_secret_value())
-        log.info("[startup] snapshot uploaded")
+        # Issue 4: don't upload an empty snapshot
+        if total_chunks == 0:
+            log.error("[startup] ingest produced 0 chunks — skipping snapshot upload to avoid overwriting a good snapshot")
+        else:
+            from steuer_rag.pipeline.snapshot import upload_snapshot
+            log.info("[startup] uploading snapshot to %s (%d chunks)", s.snapshot_dataset, total_chunks)
+            try:
+                # Issue 1: catch upload errors so they appear in logs
+                upload_snapshot(s.chroma_dir, s.snapshot_dataset, token=s.hf_token.get_secret_value())
+                log.info("[startup] snapshot uploaded successfully")
+            except Exception as exc:
+                log.error("[startup] snapshot upload failed: %s", exc, exc_info=True)
     elif s.snapshot_dataset:
         log.warning("[startup] HF_TOKEN not set — snapshot not uploaded")
 

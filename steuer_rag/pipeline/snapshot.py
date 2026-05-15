@@ -55,7 +55,12 @@ def restore_snapshot(chroma_dir: Path, dataset_repo: str, token: str | None = No
             token=token,
         )
     except Exception as exc:
-        log.info("[snapshot] snapshot not available in %s: %s", dataset_repo, exc)
+        # Distinguish "not found yet" (expected on first run) from real errors
+        exc_str = str(exc)
+        if "404" in exc_str or "not found" in exc_str.lower() or "does not exist" in exc_str.lower():
+            log.info("[snapshot] no snapshot yet in %s (first run)", dataset_repo)
+        else:
+            log.warning("[snapshot] download failed for %s: %s", dataset_repo, exc)
         return False
 
     try:
