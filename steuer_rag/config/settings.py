@@ -92,13 +92,15 @@ class Settings(BaseSettings):
     # AliasChoices can have subtle interactions with env_prefix; this validator
     # reads the standard provider keys directly from os.environ as a fallback.
     @model_validator(mode="after")
-    def _fallback_api_keys(self) -> "Settings":
+    def _fallback_env_vars(self) -> "Settings":
         if self.anthropic_api_key is None and (v := os.environ.get("ANTHROPIC_API_KEY")):
             object.__setattr__(self, "anthropic_api_key", SecretStr(v))
         if self.openai_api_key is None and (v := os.environ.get("OPENAI_API_KEY")):
             object.__setattr__(self, "openai_api_key", SecretStr(v))
         if self.hf_token is None and (v := os.environ.get("HF_TOKEN")):
             object.__setattr__(self, "hf_token", SecretStr(v))
+        if self.snapshot_dataset is None and (v := os.environ.get("STEUER_RAG_SNAPSHOT_DATASET")):
+            object.__setattr__(self, "snapshot_dataset", v)
         return self
 
     # --- derived helpers ---
