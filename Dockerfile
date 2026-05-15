@@ -26,7 +26,8 @@ ENV STEUER_RAG_API_URL=http://localhost:8000
 # HF Spaces exposes port 7860
 EXPOSE 7860
 
-# Ingest runs at startup (not build time — crawl is too slow for build timeout).
-# Streamlit starts immediately so port 7860 is live; the API becomes available
-# once ingest + uvicorn finish (~30-50 min after first start).
-CMD bash -c "(python -m steuer_rag.cli.main ingest all && uvicorn steuer_rag.api:app --host 0.0.0.0 --port 8000) & streamlit run app.py --server.port 7860 --server.address 0.0.0.0 --server.headless true"
+# All three processes start in parallel at container startup:
+# - ingest crawls and embeds documents into Chroma (~30-50 min, runs once)
+# - uvicorn is available immediately (returns empty results until ingest finishes)
+# - streamlit is the foreground process keeping the container alive
+CMD bash -c "python -m steuer_rag.cli.main ingest all & uvicorn steuer_rag.api:app --host 0.0.0.0 --port 8000 & exec streamlit run app.py --server.port 7860 --server.address 0.0.0.0 --server.headless true"
