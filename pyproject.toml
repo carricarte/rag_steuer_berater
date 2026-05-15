@@ -43,6 +43,8 @@ dependencies = [
     # Pydantic
     "pydantic>=2.9.2",
     "pydantic-settings>=2.6.1",
+    # Chat UI
+    "streamlit>=1.40.0",
     # CLI / API
     "typer>=0.15.1",
     "rich>=13.9.4",
