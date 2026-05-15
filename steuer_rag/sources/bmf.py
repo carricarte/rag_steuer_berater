@@ -39,24 +39,36 @@ class BMFScraper(BaseScraper):
     #   Glossareintraege, Standardartikel/Meta)
     # - business-only guidance (AfA-Tabelle, Betriebspruefung)
     # - pagination (VollstaendigeListe)
+    # HTML scope: individual-taxpayer tax content only.
+    # Negative lookahead excludes:
+    # - Out-of-scope tax types: VAT, corporate, trade, insurance, vehicle, inheritance, property
+    # - Internationales_Steuerrecht: bilateral-treaty (DBA) and corporate/multinational guidance;
+    #   Staatenbezogene_Informationen alone has 100+ country pages with zero individual-filer value
+    # - Fiscal statistics: Steuerschaetzung, Steuereinnahmen, Umrechnungskurse
+    # - Non-content: Pressemitteilungen, Bilderstrecken, Bilder/, Video-Textfassungen,
+    #   Glossareintraege, Standardartikel/Meta, VollstaendigeListe
     allow_pattern = re.compile(
         r"bundesfinanzministerium\.de/(Content|Web)/(DE|EN)/"
         r"(?!.*(Umsatzsteuer|Gewerbesteuer|Koerperschaft|Betriebspruefung|AfA-Tabelle|"
         r"Steuerschaetzung|Steuereinnahmen|Pressemitteilung|Bilderstrecken|"
         r"Bilder/|Video-Textfassung|Glossareintraeg|Standardartikel/Meta|"
-        r"VollstaendigeListe|Umrechnungskurse))"
+        r"VollstaendigeListe|Umrechnungskurse|"
+        r"Internationales_Steuerrecht|Staatenbezogene_Informationen|"
+        r"Versicherung_und_Feuerschutzsteuer|Versicherung_Feuerschutzsteuer|"
+        r"Kraftfahrzeugsteuer|Erbschaft|Grundsteuer|Grunderwerbsteuer))"
         r".*"
         r"(Steuer|Einkommen|Lohn|Abgabe|Tax|Income|Wage|Levy|Erklaerung|Declaration|FAQ)",
         re.I,
     )
 
-    # PDF scope: BMF-Schreiben (binding administrative guidance), Broschueren, FAQ bundles,
-    # and the EN Press_Room/Publications brochures. `Standardartikel` is intentionally excluded —
-    # it covers the monthly Steuereinnahmen and Steuerschätzung fiscal-statistics PDFs which
-    # are irrelevant to individual tax filing.
+    # PDF scope: BMF-Schreiben for individual-taxpayer topics, Broschueren, FAQ bundles,
+    # and the EN Press_Room/Publications brochures. Internationales_Steuerrecht is excluded —
+    # it contains transfer-pricing, permanent-establishment, and DBA-application PDFs which
+    # are corporate/multinational guidance, not individual Steuererklärung content.
     pdf_allow_pattern = re.compile(
-        r"bundesfinanzministerium\.de/Content/(DE|EN)/Downloads/.*"
-        r"(BMF_Schreiben|Broschueren|FAQ).*\.pdf"
+        r"bundesfinanzministerium\.de/Content/(DE|EN)/Downloads/"
+        r"(?!.*Internationales_Steuerrecht)"
+        r".*(BMF_Schreiben|Broschueren|FAQ).*\.pdf"
         r"|bundesfinanzministerium\.de/Content/(DE|EN)/Standardartikel/Press_Room/Publications/.*\.pdf",
         re.I,
     )

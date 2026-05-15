@@ -34,4 +34,4 @@ EXPOSE 7860
 
 # startup restores the Chroma snapshot from HF Dataset (fast) or runs full ingest + uploads snapshot.
 # uvicorn and streamlit start immediately in parallel so the UI is live while data loads.
-CMD bash -c "python -m steuer_rag.cli.main startup & uvicorn steuer_rag.api:app --host 0.0.0.0 --port 8000 & exec streamlit run app.py --server.port 7860 --server.address 0.0.0.0 --server.headless true"
+CMD bash -c "steuer-rag startup & uvicorn steuer_rag.api:app --host 0.0.0.0 --port 8000 & exec streamlit run app.py --server.port 7860 --server.address 0.0.0.0 --server.headless true"
