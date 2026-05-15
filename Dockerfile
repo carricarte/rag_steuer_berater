@@ -11,12 +11,10 @@ WORKDIR /home/user/app
 COPY --chown=user pyproject.toml .
 COPY --chown=user steuer_rag/ steuer_rag/
 COPY --chown=user app.py .
-COPY --chown=user scripts/ scripts/
-
 # Install Python dependencies
 RUN pip install --no-cache-dir -e .
 
-# Pre-populate the vector index during build (uses disk cache; no LLM needed)
+# Pre-populate the vector index during build (web crawl → embed → index)
 RUN python -m steuer_rag.cli.main ingest all
 
 # Streamlit UI calls the local FastAPI backend
