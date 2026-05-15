@@ -74,6 +74,16 @@ class Settings(BaseSettings):
     hybrid_sparse_weight: float = 0.4
     candidate_multiplier: int = 4  # over-fetch factor before rerank/filter
 
+    # ---- Snapshot persistence ----
+    hf_token: SecretStr | None = Field(
+        default=None,
+        validation_alias=AliasChoices("HF_TOKEN", "STEUER_RAG_HF_TOKEN"),
+    )
+    snapshot_dataset: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("STEUER_RAG_SNAPSHOT_DATASET", "SNAPSHOT_DATASET"),
+    )
+
     # ---- Logging ----
     log_level: str = "INFO"
 

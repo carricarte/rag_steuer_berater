@@ -73,6 +73,48 @@ def ingest(
 
 
 @app.command()
+def startup() -> None:
+    """Container entrypoint: restore snapshot from HF Dataset, or ingest + upload snapshot."""
+    _configure_logging()
+    s = get_settings()
+
+    if s.snapshot_dataset:
+        token = s.hf_token.get_secret_value() if s.hf_token else None
+        console.print(f"[cyan]Checking for snapshot in {s.snapshot_dataset}…[/cyan]")
+        from steuer_rag.pipeline.snapshot import restore_snapshot
+
+        if restore_snapshot(s.chroma_dir, s.snapshot_dataset, token=token):
+            idx = get_index()
+            console.print(f"[green]Snapshot restored — {idx.count()} chunks ready.[/green]")
+            return
+        console.print("[yellow]No snapshot found — running full ingest (30-50 min)…[/yellow]")
+    else:
+        console.print("[yellow]STEUER_RAG_SNAPSHOT_DATASET not set — running full ingest (30-50 min)…[/yellow]")
+
+    results = ingest_all_sync()
+    table = Table(title="Ingest results")
+    table.add_column("Source")
+    table.add_column("Docs", justify="right")
+    table.add_column("Chunks", justify="right")
+    table.add_column("Status")
+    for r in results:
+        if "error" in r:
+            table.add_row(r["source"], "-", "-", f"[red]{r['error']}[/red]")
+        else:
+            table.add_row(r["source"], str(r["docs"]), str(r["chunks"]), "[green]ok[/green]")
+    console.print(table)
+
+    if s.snapshot_dataset and s.hf_token:
+        from steuer_rag.pipeline.snapshot import upload_snapshot
+
+        console.print(f"[cyan]Uploading snapshot to {s.snapshot_dataset}…[/cyan]")
+        upload_snapshot(s.chroma_dir, s.snapshot_dataset, token=s.hf_token.get_secret_value())
+        console.print(f"[green]Snapshot saved to {s.snapshot_dataset}.[/green]")
+    elif s.snapshot_dataset:
+        console.print("[yellow]HF_TOKEN not set — snapshot not uploaded.[/yellow]")
+
+
+@app.command()
 def search(
     query: str = typer.Argument(...),
     k: int = typer.Option(5, "--k", "-k"),

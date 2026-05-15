@@ -26,8 +26,6 @@ ENV STEUER_RAG_API_URL=http://localhost:8000
 # HF Spaces exposes port 7860
 EXPOSE 7860
 
-# All three processes start in parallel at container startup:
-# - ingest crawls and embeds documents into Chroma (~30-50 min, runs once)
-# - uvicorn is available immediately (returns empty results until ingest finishes)
-# - streamlit is the foreground process keeping the container alive
-CMD bash -c "python -m steuer_rag.cli.main ingest all & uvicorn steuer_rag.api:app --host 0.0.0.0 --port 8000 & exec streamlit run app.py --server.port 7860 --server.address 0.0.0.0 --server.headless true"
+# startup restores the Chroma snapshot from HF Dataset (fast) or runs full ingest + uploads snapshot.
+# uvicorn and streamlit start immediately in parallel so the UI is live while data loads.
+CMD bash -c "python -m steuer_rag.cli.main startup & uvicorn steuer_rag.api:app --host 0.0.0.0 --port 8000 & exec streamlit run app.py --server.port 7860 --server.address 0.0.0.0 --server.headless true"
