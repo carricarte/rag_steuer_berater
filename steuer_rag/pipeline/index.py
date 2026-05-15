@@ -24,9 +24,10 @@ log = logging.getLogger(__name__)
 class VectorIndex:
     """Thin wrapper around a LangChain `VectorStore` with chunk-aware helpers."""
 
-    # Chroma rejects single `add` calls larger than ~5461 rows. Stay well under so the
-    # margin handles future Chroma cap changes and we get progress logs between batches.
-    _WRITE_BATCH_SIZE: int = 4000
+    # Keep well under Chroma's hard cap (~5461) and limit peak memory: each batch is
+    # embedded + written to disk before the next is loaded, so we hold at most 500
+    # chunk texts + their float32 vectors in RAM at any time.
+    _WRITE_BATCH_SIZE: int = 500
 
     def __init__(self, store: VectorStore) -> None:
         self.store = store
@@ -34,26 +35,30 @@ class VectorIndex:
     # ----- write path -----
 
     def add_chunks(self, chunks: Iterable[DocumentChunk]) -> int:
-        docs: list[Document] = []
-        ids: list[str] = []
-        for c in chunks:
-            docs.append(Document(page_content=c.content, metadata=c.to_metadata()))
-            ids.append(c.chunk_id)
-        if not docs:
-            return 0
-        # Chroma upserts on conflicting ids → re-running is idempotent. We batch the
-        # write so we stay under Chroma's hard cap on `add_documents` size and so a
-        # partial failure on one batch doesn't lose the others.
+        import gc
+
         written = 0
-        for i in range(0, len(docs), self._WRITE_BATCH_SIZE):
-            batch_docs = docs[i : i + self._WRITE_BATCH_SIZE]
-            batch_ids = ids[i : i + self._WRITE_BATCH_SIZE]
+        batch_docs: list[Document] = []
+        batch_ids: list[str] = []
+
+        for c in chunks:
+            batch_docs.append(Document(page_content=c.content, metadata=c.to_metadata()))
+            batch_ids.append(c.chunk_id)
+
+            if len(batch_docs) >= self._WRITE_BATCH_SIZE:
+                self.store.add_documents(documents=batch_docs, ids=batch_ids)
+                written += len(batch_docs)
+                log.info("[index] wrote %d chunks (running total %d)", len(batch_docs), written)
+                batch_docs = []
+                batch_ids = []
+                gc.collect()
+
+        if batch_docs:
             self.store.add_documents(documents=batch_docs, ids=batch_ids)
             written += len(batch_docs)
-            log.info(
-                "[index] wrote batch %d–%d / %d",
-                i + 1, i + len(batch_docs), len(docs),
-            )
+            log.info("[index] wrote %d chunks (running total %d)", len(batch_docs), written)
+            gc.collect()
+
         return written
 
     # ----- read path -----

@@ -75,11 +75,18 @@ def ingest(
 @app.command()
 def startup() -> None:
     """Container entrypoint: restore snapshot from HF Dataset, or ingest + upload snapshot."""
+    import os
     _configure_logging()
     log = logging.getLogger("steuer_rag.startup")
-    s = get_settings()
 
-    # Issue 2: log resolved config so missing env vars are immediately visible
+    log.info(
+        "[startup] env: HF_TOKEN=%s STEUER_RAG_SNAPSHOT_DATASET=%s ANTHROPIC_API_KEY=%s",
+        "SET" if os.environ.get("HF_TOKEN") else "MISSING",
+        "SET" if os.environ.get("STEUER_RAG_SNAPSHOT_DATASET") else "MISSING",
+        "SET" if os.environ.get("ANTHROPIC_API_KEY") else "MISSING",
+    )
+
+    s = get_settings()
     log.info("[startup] snapshot_dataset=%s hf_token_set=%s", s.snapshot_dataset, bool(s.hf_token))
 
     if s.snapshot_dataset:

@@ -23,5 +23,5 @@ def get_embeddings() -> HuggingFaceEmbeddings:
     return HuggingFaceEmbeddings(
         model_name=s.embed_model,
         model_kwargs={"device": s.embed_device, "trust_remote_code": True},
-        encode_kwargs={"normalize_embeddings": s.embed_normalize, "batch_size": 32},
+        encode_kwargs={"normalize_embeddings": s.embed_normalize, "batch_size": 16},
     )

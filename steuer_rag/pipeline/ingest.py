@@ -57,8 +57,7 @@ async def ingest_source(
     log.info("[ingest] starting %s (limit=%s)", source.value, limit)
     docs = await _drain_source(source, limit=limit)
     log.info("[ingest] %s — %d docs fetched", source.value, len(docs))
-    chunks = list(_chunk_docs(docs))
-    written = index.add_chunks(chunks)
+    written = index.add_chunks(_chunk_docs(docs))
     log.info("[ingest] %s — %d chunks indexed", source.value, written)
     return {"source": source.value, "docs": len(docs), "chunks": written}
 
