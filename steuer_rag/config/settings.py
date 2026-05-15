@@ -10,7 +10,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, SecretStr
+from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,8 +24,14 @@ class Settings(BaseSettings):
     )
 
     # ---- LLM (read both prefixed + raw keys) ----
-    anthropic_api_key: SecretStr | None = Field(default=None, alias="ANTHROPIC_API_KEY")
-    openai_api_key: SecretStr | None = Field(default=None, alias="OPENAI_API_KEY")
+    anthropic_api_key: SecretStr | None = Field(
+        default=None,
+        validation_alias=AliasChoices("ANTHROPIC_API_KEY", "STEUER_RAG_ANTHROPIC_API_KEY"),
+    )
+    openai_api_key: SecretStr | None = Field(
+        default=None,
+        validation_alias=AliasChoices("OPENAI_API_KEY", "STEUER_RAG_OPENAI_API_KEY"),
+    )
     llm_provider: Literal["anthropic", "openai"] = "anthropic"
     llm_model: str = "claude-opus-4-7"
     # None = let the model use its default. Newer reasoning models (opus-4-7, sonnet-4-6 …)
