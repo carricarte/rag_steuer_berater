@@ -1,3 +1,13 @@
+---
+title: Steuer RAG
+emoji: 🧾
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # Steuer-RAG — Bilingual (DE/EN) RAG for the German Steuererklärung
 
 > **Purpose:** Help users in Germany answer questions about their *Steuererklärung*
