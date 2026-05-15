@@ -9,6 +9,7 @@ WORKDIR /home/user/app
 
 # Copy project files
 COPY --chown=user pyproject.toml .
+COPY --chown=user README.md .
 COPY --chown=user steuer_rag/ steuer_rag/
 COPY --chown=user app.py .
 # Install Python dependencies
