@@ -1,10 +1,16 @@
 """Streamlit chat UI for the Steuer-RAG system.
 
-Run:  .venv/bin/streamlit run app.py
+Calls the FastAPI backend at STEUER_RAG_API_URL (defaults to localhost:8000).
+No local model loading — the UI is a pure HTTP client.
+
+Run locally:  .venv/bin/streamlit run app.py
 """
 
 from __future__ import annotations
 
+import os
+
+import httpx
 import streamlit as st
 
 st.set_page_config(
@@ -13,6 +19,8 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+API_URL = os.environ.get("STEUER_RAG_API_URL", "http://localhost:8000").rstrip("/")
 
 # ---------- sidebar ----------
 
@@ -47,15 +55,13 @@ with st.sidebar:
     )
     st.caption("Not legal or tax advice. Consult a Steuerberater for individual cases.")
 
-# ---------- load RAG (cached so model loads once) ----------
+# ---------- API helper ----------
 
-@st.cache_resource(show_spinner="Loading RAG system…")
-def load_ask():
-    from steuer_rag.generation.chain import ask
-    return ask
-
-
-ask_fn = load_ask()
+def call_ask(question: str, k: int, source: str | None, language: str | None) -> dict:
+    payload = {"question": question, "k": k, "source": source, "language": language}
+    resp = httpx.post(f"{API_URL}/ask", json=payload, timeout=120)
+    resp.raise_for_status()
+    return resp.json()
 
 # ---------- chat state ----------
 
@@ -81,34 +87,21 @@ for msg in st.session_state.messages:
 # ---------- input ----------
 
 if prompt := st.chat_input("Ask about the German Steuererklärung…"):
-    # Show user message
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Run RAG
     with st.chat_message("assistant"):
         with st.spinner("Searching corpus and generating answer…"):
             try:
-                result = ask_fn(
-                    prompt,
-                    k=k,
-                    source=source_filter,
-                    language=lang_filter,
-                )
-                answer = result.answer
-                citations = [
-                    {
-                        "n": c.n,
-                        "source": c.source,
-                        "url": c.url,
-                        "title": c.title,
-                        "rerank_score": c.rerank_score,
-                    }
-                    for c in result.citations
-                ]
+                data = call_ask(prompt, k=k, source=source_filter, language=lang_filter)
+                answer = data["answer"]
+                citations = data.get("citations", [])
+            except httpx.HTTPStatusError as e:
+                answer = f"⚠️ API error {e.response.status_code}: {e.response.text}"
+                citations = []
             except Exception as e:
-                answer = f"⚠️ Error: {e}"
+                answer = f"⚠️ Could not reach API at `{API_URL}`: {e}"
                 citations = []
 
         st.markdown(answer)

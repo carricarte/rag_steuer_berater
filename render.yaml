@@ -15,12 +15,9 @@ services:
   - type: web
     name: steuer-rag-ui
     runtime: python
-    buildCommand: bash scripts/build.sh
+    buildCommand: pip install streamlit httpx
     startCommand: streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true
     envVars:
-      - key: STEUER_RAG_LLM_PROVIDER
-        sync: false
-      - key: STEUER_RAG_LLM_MODEL
-        sync: false
-      - key: ANTHROPIC_API_KEY
+      - key: STEUER_RAG_API_URL
+        # Set this to the URL of your steuer-rag-api service, e.g. https://steuer-rag-api.onrender.com
         sync: false
