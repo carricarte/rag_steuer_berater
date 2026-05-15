@@ -135,6 +135,9 @@ class HybridRetriever:
         if self.language_preference is None:
             self.language_preference = ql
 
+        if get_index().count() == 0:
+            return RetrievalResult(documents=[], strategy=self.strategy, query_language=ql)
+
         if self.strategy == "dense":
             docs = self._dense(query, k=self.k * self.settings.candidate_multiplier)
         elif self.strategy == "sparse":
