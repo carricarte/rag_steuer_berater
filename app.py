@@ -59,7 +59,7 @@ with st.sidebar:
 
 def call_ask(question: str, k: int, source: str | None, language: str | None) -> dict:
     payload = {"question": question, "k": k, "source": source, "language": language}
-    resp = httpx.post(f"{API_URL}/ask", json=payload, timeout=120)
+    resp = httpx.post(f"{API_URL}/ask", json=payload, timeout=300)
     resp.raise_for_status()
     return resp.json()
 

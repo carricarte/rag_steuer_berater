@@ -20,6 +20,11 @@ COPY --chown=user app.py .
 # Install Python dependencies
 RUN pip install --no-cache-dir -e .
 
+# Pre-download model weights into the image so the first /ask request doesn't time out.
+# bge-m3 ~570 MB + bge-reranker-v2-m3 ~570 MB = ~1.1 GB added to image.
+RUN python -c "from steuer_rag.pipeline.embed import get_embeddings; get_embeddings(); print('embed model cached')"
+RUN python -c "from steuer_rag.retrieval.reranker import _load_cross_encoder; _load_cross_encoder(); print('reranker cached')"
+
 # Streamlit UI calls the local FastAPI backend
 ENV STEUER_RAG_API_URL=http://localhost:8000
 ENV PYTHONUNBUFFERED=1
