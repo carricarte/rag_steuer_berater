@@ -76,42 +76,37 @@ def ingest(
 def startup() -> None:
     """Container entrypoint: restore snapshot from HF Dataset, or ingest + upload snapshot."""
     _configure_logging()
+    log = logging.getLogger("steuer_rag.startup")
     s = get_settings()
 
     if s.snapshot_dataset:
         token = s.hf_token.get_secret_value() if s.hf_token else None
-        console.print(f"[cyan]Checking for snapshot in {s.snapshot_dataset}…[/cyan]")
+        log.info("[startup] checking for snapshot in %s", s.snapshot_dataset)
         from steuer_rag.pipeline.snapshot import restore_snapshot
 
         if restore_snapshot(s.chroma_dir, s.snapshot_dataset, token=token):
             idx = get_index()
-            console.print(f"[green]Snapshot restored — {idx.count()} chunks ready.[/green]")
+            log.info("[startup] snapshot restored — %d chunks ready", idx.count())
             return
-        console.print("[yellow]No snapshot found — running full ingest (30-50 min)…[/yellow]")
+        log.info("[startup] no snapshot found — running full ingest (~30-50 min)")
     else:
-        console.print("[yellow]STEUER_RAG_SNAPSHOT_DATASET not set — running full ingest (30-50 min)…[/yellow]")
+        log.info("[startup] STEUER_RAG_SNAPSHOT_DATASET not set — running full ingest (~30-50 min)")
 
     results = ingest_all_sync()
-    table = Table(title="Ingest results")
-    table.add_column("Source")
-    table.add_column("Docs", justify="right")
-    table.add_column("Chunks", justify="right")
-    table.add_column("Status")
     for r in results:
         if "error" in r:
-            table.add_row(r["source"], "-", "-", f"[red]{r['error']}[/red]")
+            log.error("[startup] ingest %s failed: %s", r["source"], r["error"])
         else:
-            table.add_row(r["source"], str(r["docs"]), str(r["chunks"]), "[green]ok[/green]")
-    console.print(table)
+            log.info("[startup] ingest %s done — %d docs, %d chunks", r["source"], r["docs"], r["chunks"])
 
     if s.snapshot_dataset and s.hf_token:
         from steuer_rag.pipeline.snapshot import upload_snapshot
 
-        console.print(f"[cyan]Uploading snapshot to {s.snapshot_dataset}…[/cyan]")
+        log.info("[startup] uploading snapshot to %s", s.snapshot_dataset)
         upload_snapshot(s.chroma_dir, s.snapshot_dataset, token=s.hf_token.get_secret_value())
-        console.print(f"[green]Snapshot saved to {s.snapshot_dataset}.[/green]")
+        log.info("[startup] snapshot uploaded")
     elif s.snapshot_dataset:
-        console.print("[yellow]HF_TOKEN not set — snapshot not uploaded.[/yellow]")
+        log.warning("[startup] HF_TOKEN not set — snapshot not uploaded")
 
 
 @app.command()

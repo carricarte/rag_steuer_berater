@@ -22,6 +22,7 @@ RUN pip install --no-cache-dir -e .
 
 # Streamlit UI calls the local FastAPI backend
 ENV STEUER_RAG_API_URL=http://localhost:8000
+ENV PYTHONUNBUFFERED=1
 
 # HF Spaces exposes port 7860
 EXPOSE 7860
