@@ -1,5 +1,10 @@
 FROM python:3.12-slim
 
+# Build tools needed for fasttext (C++17) and other compiled wheels
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc g++ build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
 # HF Spaces requires a non-root user with uid 1000
 RUN useradd -m -u 1000 user
 USER user
