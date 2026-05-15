@@ -10,7 +10,9 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import AliasChoices, Field, SecretStr
+import os
+
+from pydantic import AliasChoices, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -86,6 +88,18 @@ class Settings(BaseSettings):
 
     # ---- Logging ----
     log_level: str = "INFO"
+
+    # AliasChoices can have subtle interactions with env_prefix; this validator
+    # reads the standard provider keys directly from os.environ as a fallback.
+    @model_validator(mode="after")
+    def _fallback_api_keys(self) -> "Settings":
+        if self.anthropic_api_key is None and (v := os.environ.get("ANTHROPIC_API_KEY")):
+            object.__setattr__(self, "anthropic_api_key", SecretStr(v))
+        if self.openai_api_key is None and (v := os.environ.get("OPENAI_API_KEY")):
+            object.__setattr__(self, "openai_api_key", SecretStr(v))
+        if self.hf_token is None and (v := os.environ.get("HF_TOKEN")):
+            object.__setattr__(self, "hf_token", SecretStr(v))
+        return self
 
     # --- derived helpers ---
     def ensure_dirs(self) -> None:
