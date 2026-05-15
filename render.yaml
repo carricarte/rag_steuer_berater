@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: steuer-rag
+    runtime: python
+    buildCommand: pip install -e .
+    startCommand: uvicorn steuer_rag.api:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: STEUER_RAG_LLM_PROVIDER
+        sync: false
+      - key: STEUER_RAG_LLM_MODEL
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
