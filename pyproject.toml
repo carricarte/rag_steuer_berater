@@ -3,7 +3,7 @@ name = "steuer-rag"
 version = "0.1.0"
 description = "Bilingual (DE/EN) RAG system for the German Steuererklärung — scrapes BMF, Elster, BZSt official sources."
 readme = "README.md"
-requires-python = ">=3.11,<3.13"
+requires-python = ">=3.11,<3.15"
 authors = [{ name = "Steuer-RAG Team" }]
 license = { text = "MIT" }
 
